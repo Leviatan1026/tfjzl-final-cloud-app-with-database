@@ -95,16 +95,14 @@ def enroll(request, course_id):
 
 
 def submit(request, course_id):
-    user = request.user
     course = get_object_or_404(Course, pk=course_id)
+    user = request.user
     enrollment = Enrollment.objects.get(user=user, course=course)
     submission = Submission.objects.create(enrollment=enrollment)
     choices = extract_answers(request)
-    for choice_id in choices:
-        choice = Choice.objects.get(pk=choice_id)
-        submission.choices.add(choice)
-    return HttpResponseRedirect(reverse(viewname='onlinecourse:show_exam_result',
-                                        args=(course_id, submission.id)))
+    submission.choices.set(choices)
+    submission_id = submission.id
+    return HttpResponseRedirect(reverse(viewname='onlinecourse:exam_result', args=(course_id, submission_id,)))
 
 
 def extract_answers(request):
@@ -118,20 +116,24 @@ def extract_answers(request):
 
 
 def show_exam_result(request, course_id, submission_id):
+    context = {}
     course = get_object_or_404(Course, pk=course_id)
-    submission = get_object_or_404(Submission, pk=submission_id)
+    submission = Submission.objects.get(id=submission_id)
     choices = submission.choices.all()
-    selected_ids = [choice.id for choice in choices]
+
     total_score = 0
-    for question in course.question_set.all():
-        if question.is_get_score(selected_ids):
+    questions = course.question_set.all()
+
+    for question in questions:
+        correct_choices = question.choice_set.filter(is_correct=True)
+        selected_choices = choices.filter(question=question)
+        if set(correct_choices) == set(selected_choices):
             total_score += question.grade
-    context = {
-        'course': course,
-        'submission': submission,
-        'total_score': total_score,
-        'selected_ids': selected_ids,
-    }
+
+    context['course'] = course
+    context['grade'] = total_score
+    context['choices'] = choices
+
     return render(request, 'onlinecourse/exam_result_bootstrap.html', context)
 
 
